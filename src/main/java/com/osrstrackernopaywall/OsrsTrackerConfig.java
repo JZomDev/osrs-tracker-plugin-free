@@ -22,13 +22,13 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.osrstracker;
+package com.osrstrackernopaywall;
 
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
-import com.osrstracker.video.VideoQuality;
+import com.osrstrackernopaywall.video.VideoQuality;
 
 @ConfigGroup("osrstracker")
 public interface OsrsTrackerConfig extends Config

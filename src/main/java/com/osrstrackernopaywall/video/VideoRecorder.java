@@ -22,10 +22,10 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.osrstracker.video;
+package com.osrstrackernopaywall.video;
 
 import lombok.extern.slf4j.Slf4j;
-import com.osrstracker.OsrsTrackerConfig;
+import com.osrstrackernopaywall.OsrsTrackerConfig;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;

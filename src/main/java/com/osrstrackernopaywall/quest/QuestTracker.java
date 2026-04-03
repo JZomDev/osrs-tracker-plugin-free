@@ -22,25 +22,20 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.osrstracker.quest;
+package com.osrstrackernopaywall.quest;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
-import com.osrstracker.OsrsTrackerConfig;
-import com.osrstracker.api.ApiClient;
-import com.osrstracker.video.VideoRecorder;
+import com.osrstrackernopaywall.OsrsTrackerConfig;
+import com.osrstrackernopaywall.api.ApiClient;
+import com.osrstrackernopaywall.video.VideoRecorder;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
-import net.runelite.api.Quest;
-import net.runelite.api.QuestState;
 import net.runelite.api.VarPlayer;
 import net.runelite.api.widgets.Widget;
 import net.runelite.client.util.Text;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.ArrayList;
-import java.util.List;
 
 /**
  * Handles quest completion detection and tracking.

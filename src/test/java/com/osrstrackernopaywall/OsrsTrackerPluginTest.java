@@ -1,4 +1,4 @@
-package com.osrstracker;
+package com.osrstrackernopaywall;
 
 import net.runelite.client.RuneLite;
 import net.runelite.client.externalplugins.ExternalPluginManager;

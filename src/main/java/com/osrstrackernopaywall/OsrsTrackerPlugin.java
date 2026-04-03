@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.osrstracker;
+package com.osrstrackernopaywall;
 
 import com.google.gson.JsonObject;
 import com.google.inject.Provides;
@@ -43,19 +43,18 @@ import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.Text;
-import com.osrstracker.api.ApiClient;
-import com.osrstracker.skills.SkillLevelTracker;
-import com.osrstracker.quest.QuestTracker;
-import com.osrstracker.loot.LootTracker;
-import com.osrstracker.collectionlog.CollectionLogTracker;
-import com.osrstracker.death.DeathTracker;
-import com.osrstracker.clue.ClueScrollTracker;
-import com.osrstracker.pets.PetTracker;
-import com.osrstracker.video.VideoRecorder;
+import com.osrstrackernopaywall.api.ApiClient;
+import com.osrstrackernopaywall.skills.SkillLevelTracker;
+import com.osrstrackernopaywall.quest.QuestTracker;
+import com.osrstrackernopaywall.loot.LootTracker;
+import com.osrstrackernopaywall.collectionlog.CollectionLogTracker;
+import com.osrstrackernopaywall.death.DeathTracker;
+import com.osrstrackernopaywall.clue.ClueScrollTracker;
+import com.osrstrackernopaywall.pets.PetTracker;
+import com.osrstrackernopaywall.video.VideoRecorder;
 
 import javax.inject.Inject;
 import java.awt.image.BufferedImage;
-import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;

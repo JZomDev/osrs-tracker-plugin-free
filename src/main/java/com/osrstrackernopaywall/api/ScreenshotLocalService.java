@@ -2,7 +2,7 @@
  * Copyright (c) 2025, Dennis De Vulder
  * All rights reserved.
  */
-package com.osrstracker.api;
+package com.osrstrackernopaywall.api;
 
 import lombok.extern.slf4j.Slf4j;
 

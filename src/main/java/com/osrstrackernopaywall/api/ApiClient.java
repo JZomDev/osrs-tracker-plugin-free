@@ -22,7 +22,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.osrstracker.api;
+package com.osrstrackernopaywall.api;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;

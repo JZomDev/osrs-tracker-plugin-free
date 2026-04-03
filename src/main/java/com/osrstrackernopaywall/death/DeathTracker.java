@@ -22,15 +22,15 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-package com.osrstracker.death;
+package com.osrstrackernopaywall.death;
 
 import com.google.gson.JsonObject;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.Player;
-import com.osrstracker.OsrsTrackerConfig;
-import com.osrstracker.api.ApiClient;
-import com.osrstracker.video.VideoRecorder;
+import com.osrstrackernopaywall.OsrsTrackerConfig;
+import com.osrstrackernopaywall.api.ApiClient;
+import com.osrstrackernopaywall.video.VideoRecorder;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.inject.Inject;
