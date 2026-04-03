@@ -1,81 +1,32 @@
-# OSRS Tracker RuneLite Plugin
+# OSRS Tracker (Local Capture Mode)
 
-A RuneLite plugin that integrates with [OSRS Tracker](https://osrs-tracker.com) to track clan shared items and record in-game achievements with video replay support.
+This RuneLite plugin captures gameplay events and stores videos/screenshots locally.
 
-## Current Version: 1.1.0
+## What It Does
 
-See [CHANGELOG.md](CHANGELOG.md) for full release notes.
+- Captures level-ups, quests, loot drops, collection log entries, deaths, clue rewards, and pet drops.
+- Saves quick captures from the sidebar button.
+- Stores files under `RuneLite.RUNELITE_DIR/videos/<event_type>/`.
 
-## Version Comparison
+## File Layout
 
-| Feature | v1.0.0 | v1.1.0 |
-|---------|--------|--------|
-| **Item Snitch** | Bank scanning only | Bank, shared chest, equipment, inventory |
-| **Item Locations** | No location tracking | Reports where items are stored |
-| **Pet Tracking** | ❌ | ✅ Detects all pet drop types |
-| **Bingo System** | ❌ | ✅ Full event tracking & progress |
-| **Raid Detection** | ❌ | ✅ CoX, ToB, ToA completions |
-| **Gauntlet Detection** | ❌ | ✅ Normal & Corrupted |
-| **Slayer Tasks** | ❌ | ✅ Task completion tracking |
-| **Quota Notifications** | ❌ | ✅ In-game alerts when limits reached |
-| **Level-up Spam** | 24 fake events on login | Fixed - only real level-ups |
+For each event, the plugin writes files using:
 
-## Features
+- `<event_type>_<timestamp>.mp4`
+- `<event_type>_<timestamp>.png` (when screenshot is captured)
+- `<event_type>_<timestamp>.json` (event metadata payload)
 
-### Item Snitch
+Example:
 
-Monitor your clan's shared storage and get notified when tracked items are spotted.
-
-- **Multi-Location Tracking** - Scans bank, shared chest, equipment, and inventory
-- **Location Reporting** - API receives where each item is stored
-- **Variant Support** - Detects all variants of degradeable items (Barrows armor at any %, charged weapons, etc.)
-- **Real-time Alerts** - Get notified when tracked items appear in shared storage
-- **Smart Availability Status** - Shows if items are available, accounted for, partial, or missing
-- **Automatic Sync** - Item list syncs automatically with your group's tracked items
-
-### Pet Drop Tracking
-
-Never miss recording a pet drop again!
-
-- **All Drop Types** - Detects follower pets, backpack pets, and duplicates
-- **Pet Identification** - Identifies pet by checking your follower NPC
-- **Video Capture** - Automatically captures the moment with video and screenshot
-
-### Bingo Event Tracking
-
-Full integration with OSRS Tracker bingo events.
-
-- **Automatic Subscription** - Fetches your active bingo subscriptions on login
-- **Progress Reporting** - Reports kills, loot, clues, raids, and more
-- **Proof Capture** - Screenshots at milestone intervals for verification
-- **Sidebar Status** - Shows active event and tile progress
-
-### Achievement Tracking
-
-- **Level-up Tracking** - Automatically records skill level-ups
-- **Quest Completion Tracking** - Records completed quests with quest point rewards
-- **Loot Drop Tracking** - Tracks valuable loot from bosses and NPCs (configurable minimum value)
-- **Collection Log Updates** - Sends notifications for new collection log items
-- **Clue Scroll Rewards** - Tracks clue scroll completions with reward details
-- **Death Tracking** - Records deaths with location information
-- **Raid Completions** - Detects CoX, ToB, and ToA completions
-- **Gauntlet Completions** - Tracks Normal and Corrupted Gauntlet
-- **Slayer Tasks** - Reports slayer task completions
-
-### Video Replays
-
-- **Automatic Capture** - Records short video clips of your achievements
-- **Configurable Quality** - Choose between Screenshot only, Low, Medium, High, or Ultra
-- **Login Protection** - Automatically blurs login screens to protect credentials
-- **Screenshot Fallback** - Falls back to screenshots when video quota exceeded
+`videos/loot_drop/loot_drop_20260403_213015_442.mp4`
 
 ## Installation
 
 ### From Plugin Hub
 
-Search for **OSRS Tracker** in the RuneLite Plugin Hub.
+Search for **OSRS Tracker Free** in RuneLite Plugin Hub.
 
-### Building from Source
+### Build from Source
 
 ```bash
 git clone https://github.com/dennisdevulder/osrs-tracker-plugin.git
@@ -83,40 +34,15 @@ cd osrs-tracker-plugin
 ./gradlew build
 ```
 
-The JAR will be in `build/libs/`.
+## Notes
 
-## Getting Started
+- This build is offline/local-only. Online API sync, bingo integration, and item snitch are removed.
+- Video quality is configurable in plugin settings.
+- Login-sensitive interfaces are still blurred in captured media.
 
-### 1. Create an Account
+## License
 
-1. Go to [osrs-tracker.com](https://osrs-tracker.com) and create an account
-2. Join or create a group for your clan
-3. Navigate to **Settings → API Tokens** and generate a token
-
-### 2. Configure the Plugin
-
-In RuneLite, go to **Configuration** (wrench icon) → search for **OSRS Tracker**:
-
-1. Enter your **API Token** from osrs-tracker.com
-2. Tracking will start automatically once configured
-
-### 3. Item Snitch Setup
-
-1. Your group owner adds items to track on osrs-tracker.com
-2. The plugin automatically syncs the tracked item list
-3. Open your bank or shared chest - the plugin scans for tracked items
-4. Get notified when items are detected
-5. View item locations on the web dashboard
-
-### 4. Achievement Tracking Options
-
-- **Track Level-ups** - Send skill level-ups
-- **Track Quests** - Send quest completions
-- **Track Loot Drops** - Send valuable loot (configurable minimum GP value)
-- **Track Collection Log** - Send new collection log entries
-- **Track Clue Scrolls** - Send clue scroll rewards
-- **Track Deaths** - Send death events
-- **Track Pets** - Send pet drop events
+BSD 2-Clause License - See `LICENSE`.
 
 ## Sidebar Panel
 

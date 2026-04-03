@@ -52,19 +52,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-import okhttp3.*;
-import okio.BufferedSink;
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-
 /**
  * Records gameplay video using an in-memory circular buffer of JPEG frames.
  *
  * Implementation details:
  * - Maintains a rolling 10-second buffer of JPEG-compressed frames in memory
  * - Memory footprint is bounded and predictable (~15-30 MB depending on quality)
- * - On clip request, snapshots the last N frames and streams them to cloud storage
- * - Uses presigned URLs from Rails API to upload directly to Backblaze
+ * - On clip request, snapshots the last N frames and serializes them for local persistence
  * - Old frames are automatically overwritten (circular buffer)
  * - No disk I/O for normal recording - only memory operations
  *
@@ -83,10 +77,7 @@ public class VideoRecorder
     private final ChatMessageManager chatMessageManager;
     private final ScheduledExecutorService scheduler;
     private final ExecutorService asyncWriter;
-    private final ExecutorService apiExecutor; // Dedicated thread for API calls (presigned URLs)
-    private final OkHttpClient httpClient;
-    private final OkHttpClient uploadClient; // Separate client with longer timeouts for uploads
-    private final Gson gson;
+    private final ExecutorService apiExecutor;
 
     // Circular buffer configuration
     private static final int MAX_FRAMES = 300; // 10 seconds at 30 FPS
@@ -94,7 +85,7 @@ public class VideoRecorder
     // Circular buffer storage
     private final byte[][] jpegBuffer = new byte[MAX_FRAMES][];
     private final long[] timestampBuffer = new long[MAX_FRAMES];
-    private final boolean[] needsBlurBuffer = new boolean[MAX_FRAMES]; // Tracks if frame needs blur (deferred to upload)
+    private final boolean[] needsBlurBuffer = new boolean[MAX_FRAMES]; // Tracks if frame needs blur (deferred to clip finalization)
     private final AtomicInteger writeIndex = new AtomicInteger(0);
     private final AtomicInteger frameCount = new AtomicInteger(0);
     private final Object bufferLock = new Object();
@@ -127,30 +118,12 @@ public class VideoRecorder
     private static final int BLUR_RADIUS = 15;
 
     @Inject
-    public VideoRecorder(DrawManager drawManager, OsrsTrackerConfig config, Client client, ChatMessageManager chatMessageManager, OkHttpClient httpClient, Gson gson)
+    public VideoRecorder(DrawManager drawManager, OsrsTrackerConfig config, Client client, ChatMessageManager chatMessageManager)
     {
         this.drawManager = drawManager;
         this.config = config;
         this.client = client;
         this.chatMessageManager = chatMessageManager;
-        this.gson = gson;
-
-        // Create our own client without disk cache to avoid RuneLite cache conflicts
-        // The shared RuneLite client uses disk caching which can fail on Windows due to
-        // file locking issues, causing presigned URL requests to fail
-        // Connection pooling reduces latency for repeated API calls (presigned URLs)
-        this.httpClient = httpClient.newBuilder()
-            .cache(null)  // Disable disk cache for our API calls
-            .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))  // Keep up to 5 connections alive for 5 min
-            .build();
-
-        // Create a separate client with longer timeouts for large video uploads
-        this.uploadClient = httpClient.newBuilder()
-            .cache(null)  // Disable disk cache
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(5, TimeUnit.MINUTES)  // 5 min for large uploads
-            .readTimeout(5, TimeUnit.MINUTES)
-            .build();
 
         this.scheduler = Executors.newScheduledThreadPool(1, r -> {
             Thread t = new Thread(r, "OSRS-Tracker-Video-Scheduler");
@@ -164,8 +137,7 @@ public class VideoRecorder
             return t;
         });
 
-        // Dedicated single thread for API calls (presigned URLs)
-        // This prevents blocking the asyncWriter threads during HTTP calls
+        // Dedicated single thread for heavier clip serialization work
         this.apiExecutor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "OSRS-Tracker-API");
             t.setDaemon(true);
@@ -747,14 +719,14 @@ public class VideoRecorder
         });
     }
 
-    // Maximum resolution cap (1080p) to normalize upload sizes across different displays
+    // Maximum resolution cap (1080p) to normalize saved clip sizes across different displays
     private static final int MAX_WIDTH = 1920;
     private static final int MAX_HEIGHT = 1080;
 
     /**
      * Encodes a captured Image to JPEG and stores it in the circular buffer.
      * Caps resolution at 1080p to normalize file sizes across different displays.
-     * Blur is deferred to upload phase to save CPU (most frames are overwritten before upload).
+     * Blur is deferred to finalize phase to save CPU (most frames are overwritten before clip extraction).
      *
      * @param image The image to encode
      * @param timestamp The timestamp for the frame
@@ -900,11 +872,11 @@ public class VideoRecorder
 
     /**
      * Stores JPEG bytes in the circular buffer with a timestamp and blur flag.
-     * Blur is deferred to upload phase to save CPU since most frames are overwritten before upload.
+     * Blur is deferred to finalize phase to save CPU since most frames are overwritten before extraction.
      *
      * @param jpegBytes The JPEG-encoded frame data
      * @param timestamp The timestamp for the frame
-     * @param shouldBlur Whether this frame needs blur applied during upload
+     * @param shouldBlur Whether this frame needs blur applied during clip finalization
      */
     private void storeInBuffer(byte[] jpegBytes, long timestamp, boolean shouldBlur)
     {
@@ -923,7 +895,7 @@ public class VideoRecorder
     }
 
     /**
-     * Finalizes the video capture by taking a screenshot and streaming frames to cloud storage.
+     * Finalizes the video capture by taking a screenshot and serializing buffered frames.
      *
      * @param callback The callback to invoke when complete
      * @param videoStartTime The start timestamp for the video (frames before this are excluded)
@@ -949,9 +921,6 @@ public class VideoRecorder
 
                     String screenshotBase64 = imageToBase64(screenshot);
 
-                    // Get FPS for presigned URL request
-                    final int fps = config.videoQuality().getFps();
-
                     // Prepare frames snapshot (fast, on asyncWriter thread)
                     FrameSnapshot frameSnapshot = prepareFrameSnapshot(videoStartTime, videoEndTime);
 
@@ -961,43 +930,15 @@ public class VideoRecorder
                         return;
                     }
 
-                    // Fetch presigned URL on dedicated API thread to avoid blocking asyncWriter
-                    // This allows encoding threads to continue working while we wait for the API
                     apiExecutor.submit(() -> {
                         try
                         {
-                            PresignedUrlResponse presignedUrl = getPresignedUploadUrl(fps);
-
-                            if (presignedUrl == null)
-                            {
-                                log.error("Failed to get presigned URL - returning screenshot only");
-                                callback.onComplete(screenshotBase64, null);
-                                return;
-                            }
-
-                            if (presignedUrl.quotaExceeded)
-                            {
-                                showQuotaExceededMessage(presignedUrl.message);
-                                callback.onComplete(screenshotBase64, null);
-                                return;
-                            }
-
-                            // Now upload on asyncWriter thread
-                            asyncWriter.submit(() -> {
-                                boolean success = uploadFramesToBackblaze(presignedUrl.uploadUrl, frameSnapshot.frames, fps);
-                                if (success)
-                                {
-                                    callback.onComplete(screenshotBase64, presignedUrl.key);
-                                }
-                                else
-                                {
-                                    callback.onComplete(screenshotBase64, null);
-                                }
-                            });
+                            String videoBase64 = encodeFramesToBase64(frameSnapshot.frames);
+                            callback.onComplete(screenshotBase64, videoBase64);
                         }
                         catch (Exception e)
                         {
-                            log.error("Failed to get presigned URL", e);
+                            log.error("Failed to serialize video clip", e);
                             callback.onComplete(screenshotBase64, null);
                         }
                     });
@@ -1012,7 +953,7 @@ public class VideoRecorder
     }
 
     /**
-     * Container for frame snapshot data (prepared frames without upload URL).
+     * Container for frame snapshot data.
      */
     private static class FrameSnapshot
     {
@@ -1063,7 +1004,7 @@ public class VideoRecorder
         {
             byte[] frame = frameData.frame;
 
-            // Apply deferred blur if needed (only for frames that get uploaded)
+            // Apply deferred blur if needed (only for frames included in the final clip)
             if (frameData.needsBlur)
             {
                 try
@@ -1113,169 +1054,16 @@ public class VideoRecorder
     }
 
     /**
-     * Response from the presigned upload URL endpoint.
+     * Serializes captured JPEG frames into one base64 blob for local persistence.
      */
-    private static class PresignedUrlResponse
+    private String encodeFramesToBase64(List<byte[]> frames) throws IOException
     {
-        String uploadUrl;
-        String key;
-        boolean quotaExceeded = false;
-        boolean screenshotOnly = false;
-        String message;
-    }
-
-    /**
-     * Gets a presigned upload URL from the Rails API.
-     *
-     * @param fps The frames per second (encoded in filename for FFmpeg)
-     * @return The presigned URL response or null on failure
-     */
-    private PresignedUrlResponse getPresignedUploadUrl(int fps)
-    {
-        String apiUrl = OsrsTrackerConfig.getEffectiveApiUrl();
-        String apiToken = config.apiToken();
-
-        if (apiToken.isEmpty())
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        for (byte[] frame : frames)
         {
-            log.warn("API token not configured");
-            return null;
+            baos.write(frame);
         }
-
-        String endpoint = apiUrl + "/events/presigned_upload_url?fps=" + fps;
-
-        Request request = new Request.Builder()
-            .url(endpoint)
-            .addHeader("Authorization", "Bearer " + apiToken)
-            .addHeader("Content-Type", "application/json")
-            .get()
-            .build();
-
-        try
-        {
-            Response response = httpClient.newCall(request).execute();
-            try
-            {
-                String body = response.body().string();
-                JsonObject json = gson.fromJson(body, JsonObject.class);
-                
-                if (response.code() == 402)
-                {
-                    PresignedUrlResponse result = new PresignedUrlResponse();
-                    result.quotaExceeded = true;
-                    result.screenshotOnly = json.has("screenshot_only") && json.get("screenshot_only").getAsBoolean();
-                    result.message = json.has("message") ? json.get("message").getAsString() : "Daily video limit reached";
-                    
-                    return result;
-                }
-                
-                if (!response.isSuccessful())
-                {
-                    log.error("Failed to get presigned URL: {} - {}", response.code(), response.message());
-                    return null;
-                }
-
-                PresignedUrlResponse result = new PresignedUrlResponse();
-                result.uploadUrl = json.get("upload_url").getAsString();
-                result.key = json.get("key").getAsString();
-
-                return result;
-            }
-            finally
-            {
-                response.close();
-            }
-        }
-        catch (IOException e)
-        {
-            log.error("Error getting presigned URL", e);
-            return null;
-        }
-    }
-
-    /**
-     * Uploads JPEG frames directly to Backblaze as MJPEG format using streaming.
-     * MJPEG is simply concatenated JPEG frames - FFmpeg reads this natively.
-     *
-     * Uses streaming to avoid memory spikes: frames are written directly to the
-     * network socket instead of buffering all frames in memory first.
-     * This eliminates the ~15MB memory spike during upload for 300 high-quality frames.
-     *
-     * @param uploadUrl The presigned Backblaze upload URL
-     * @param frames The list of JPEG frame bytes
-     * @param fps The frames per second for the video (encoded in filename by Rails)
-     * @return true if upload was successful
-     */
-    private boolean uploadFramesToBackblaze(String uploadUrl, List<byte[]> frames, int fps)
-    {
-        try
-        {
-            long totalSize = frames.stream().mapToInt(f -> f.length).sum();
-
-            // Use streaming RequestBody to avoid buffering all frames in memory
-            // This writes frames directly to the network socket as we iterate
-            final long finalTotalSize = totalSize;
-            RequestBody streamingBody = new RequestBody()
-            {
-                @Override
-                public MediaType contentType()
-                {
-                    return MediaType.parse("application/octet-stream");
-                }
-
-                @Override
-                public long contentLength()
-                {
-                    return finalTotalSize; // Required by Backblaze (no chunked encoding)
-                }
-
-                @Override
-                public void writeTo(BufferedSink sink) throws IOException
-                {
-                    // Stream frames directly to output - no intermediate buffer!
-                    // MJPEG format is just concatenated JPEG frames
-                    for (byte[] frame : frames)
-                    {
-                        sink.write(frame);
-                    }
-                    sink.flush();
-                }
-            };
-
-            // Presigned URL already contains auth - need Content-Type and Content-Length
-            // Backblaze requires explicit Content-Length header (no chunked encoding)
-            Request request = new Request.Builder()
-                .url(uploadUrl)
-                .addHeader("Content-Type", "application/octet-stream")
-                .addHeader("Content-Length", String.valueOf(totalSize))
-                .put(streamingBody)
-                .build();
-
-            // Use uploadClient with longer timeouts for large uploads
-            Response response = uploadClient.newCall(request).execute();
-            try
-            {
-                String responseBody = response.body() != null ? response.body().string() : "null";
-                if (response.isSuccessful())
-                {
-                    return true;
-                }
-                else
-                {
-                    log.error("Failed to upload to Backblaze: {} - {} - Body: {}",
-                        response.code(), response.message(), responseBody);
-                    return false;
-                }
-            }
-            finally
-            {
-                response.close();
-            }
-        }
-        catch (IOException e)
-        {
-            log.error("Error uploading frames to Backblaze", e);
-            return false;
-        }
+        return Base64.getEncoder().encodeToString(baos.toByteArray());
     }
 
     /**
@@ -1289,23 +1077,6 @@ public class VideoRecorder
         return Base64.getEncoder().encodeToString(imageBytes);
     }
 
-    /**
-     * Shows a chat message when video quota is exceeded.
-     * Notifies the user that they've hit their daily limit.
-     */
-    private void showQuotaExceededMessage(String message)
-    {
-        if (chatMessageManager == null)
-        {
-            return;
-        }
-
-        String displayMessage = message != null ? message : "Daily video limit reached";
-        chatMessageManager.queue(QueuedMessage.builder()
-            .type(ChatMessageType.GAMEMESSAGE)
-            .runeLiteFormattedMessage("<col=ff9040>[OSRS Tracker] " + displayMessage + "</col>")
-            .build());
-    }
 
     /**
      * Callback interface for video capture completion.
@@ -1316,7 +1087,7 @@ public class VideoRecorder
          * Called when video capture is complete.
          *
          * @param screenshotBase64 Base64-encoded PNG screenshot
-         * @param videoKey The storage key for the uploaded video frames, or null if not available
+         * @param videoKey Base64-encoded video bytes, or null if not available
          */
         void onComplete(String screenshotBase64, String videoKey);
     }

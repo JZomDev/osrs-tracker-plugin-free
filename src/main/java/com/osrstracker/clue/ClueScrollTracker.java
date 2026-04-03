@@ -28,7 +28,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.osrstracker.OsrsTrackerConfig;
 import com.osrstracker.api.ApiClient;
-import com.osrstracker.bingo.BingoProgressReporter;
 import com.osrstracker.video.VideoRecorder;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
@@ -39,8 +38,6 @@ import net.runelite.client.game.ItemManager;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -51,7 +48,7 @@ import java.util.regex.Pattern;
  * 1. Listening for the clue completion chat message to get the tier and count
  * 2. Listening for the reward widget to load (InterfaceID.TRAIL_REWARDSCREEN)
  * 3. Extracting reward items from the TRAIL_REWARDINV container
- * 4. Capturing a video/screenshot and sending to the API
+ * 4. Capturing a video/screenshot and saving it locally
  *
  * Based on patterns from Dink and Screenshot plugins.
  */
@@ -72,7 +69,6 @@ public class ClueScrollTracker
     private final ApiClient apiClient;
     private final OsrsTrackerConfig config;
     private final VideoRecorder videoRecorder;
-    private final BingoProgressReporter bingoProgressReporter;
 
     // State tracking for matching chat message to widget
     private String pendingClueTier = null;
@@ -85,8 +81,7 @@ public class ClueScrollTracker
             ItemManager itemManager,
             ApiClient apiClient,
             OsrsTrackerConfig config,
-            VideoRecorder videoRecorder,
-            BingoProgressReporter bingoProgressReporter)
+            VideoRecorder videoRecorder)
     {
         this.client = client;
         this.clientThread = clientThread;
@@ -94,7 +89,6 @@ public class ClueScrollTracker
         this.apiClient = apiClient;
         this.config = config;
         this.videoRecorder = videoRecorder;
-        this.bingoProgressReporter = bingoProgressReporter;
     }
 
     /**
@@ -159,7 +153,7 @@ public class ClueScrollTracker
     }
 
     /**
-     * Process the clue reward - extract items and send to API.
+     * Process the clue reward - extract items and save locally.
      */
     private void processClueReward()
     {
@@ -223,11 +217,8 @@ public class ClueScrollTracker
 
         log.debug("Processing {} clue scroll reward: {} items worth {} gp", tier, itemCount, totalValue);
 
-        // Send to API with video capture
+        // Save locally with media capture
         sendClueRewardToApi(tier, completionCount, itemsArray, totalValue);
-
-        // Report to bingo progress (converts JsonArray items to LootItem list)
-        reportToBingo(tier, itemsArray, totalValue);
 
         // Reset state
         resetState();
@@ -267,25 +258,6 @@ public class ClueScrollTracker
         }
     }
 
-    /**
-     * Report clue completion to bingo progress tracker.
-     */
-    private void reportToBingo(String tier, JsonArray items, long totalValue)
-    {
-        // Convert JsonArray to List<LootItem> for bingo reporter
-        List<BingoProgressReporter.LootItem> lootItems = new ArrayList<>();
-        for (int i = 0; i < items.size(); i++)
-        {
-            JsonObject item = items.get(i).getAsJsonObject();
-            int itemId = item.get("item_id").getAsInt();
-            String name = item.get("name").getAsString();
-            int quantity = item.get("quantity").getAsInt();
-            long value = item.has("total_value") ? item.get("total_value").getAsLong() : 0;
-            lootItems.add(new BingoProgressReporter.LootItem(itemId, name, quantity, value));
-        }
-
-        bingoProgressReporter.reportClueComplete(tier, lootItems, totalValue);
-    }
 
     /**
      * Check if a tier string is valid.

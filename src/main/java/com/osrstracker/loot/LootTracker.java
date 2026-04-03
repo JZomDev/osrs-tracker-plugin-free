@@ -39,10 +39,10 @@ import javax.inject.Singleton;
 import java.util.Collection;
 
 /**
- * Tracks loot drops from NPCs and reports valuable drops to the API.
+ * Tracks loot drops from NPCs and saves valuable drops locally.
  *
  * This tracker processes loot drops from ServerNpcLoot events, calculates the total
- * value of the drop, and sends it to the API if it meets the configured minimum value threshold.
+ * value of the drop, and saves it locally if it meets the configured minimum value threshold.
  */
 @Slf4j
 @Singleton
@@ -63,9 +63,9 @@ public class LootTracker
     }
 
     /**
-     * Processes a loot drop from an NPC and sends it to the API if it meets value requirements.
+     * Processes a loot drop from an NPC and saves it locally if it meets value requirements.
      *
-     * The loot drop is only sent if:
+     * The loot drop is only saved if:
      * 1. Loot tracking is enabled in the config
      * 2. The total value meets or exceeds the configured minimum loot value
      * 3. The items collection is not empty

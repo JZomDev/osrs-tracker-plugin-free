@@ -25,51 +25,43 @@
 package com.osrstracker.api;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.osrstracker.OsrsTrackerConfig;
 import lombok.extern.slf4j.Slf4j;
-import net.runelite.api.ChatMessageType;
-import net.runelite.client.chat.ChatMessageManager;
-import net.runelite.client.chat.QueuedMessage;
-import okhttp3.*;
+import net.runelite.client.RuneLite;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Base64;
 
 /**
- * Handles all HTTP communication with the OSRS Tracker API.
- * This class provides a centralized way to send events to the backend server.
+ * Handles local event persistence for OSRS Tracker.
  */
 @Slf4j
 @Singleton
 public class ApiClient
 {
-    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-
-    private final OkHttpClient httpClient;
-    private final OsrsTrackerConfig config;
     private final Gson gson;
-    private final ChatMessageManager chatMessageManager;
+    private final ScreenshotLocalService screenshotLocalService;
+
+    private static final DateTimeFormatter FILE_TS = DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss_SSS");
 
     @Inject
-    public ApiClient(OkHttpClient httpClient, OsrsTrackerConfig config, Gson gson, ChatMessageManager chatMessageManager)
+    public ApiClient(Gson gson, ScreenshotLocalService screenshotLocalService)
     {
-        // Create our own client without disk cache to avoid RuneLite cache conflicts
-        // The shared RuneLite client uses disk caching which can fail on Windows
-        this.httpClient = httpClient.newBuilder()
-            .cache(null)  // Disable disk cache for our API calls
-            .build();
-        this.config = config;
         this.gson = gson;
-        this.chatMessageManager = chatMessageManager;
+        this.screenshotLocalService = screenshotLocalService;
     }
 
     /**
-     * Sends a JSON payload to the specified API endpoint.
-     * The request is performed asynchronously to avoid blocking the game client.
+     * Saves a JSON payload locally for the specified endpoint.
      *
-     * @param endpoint The API endpoint path (e.g., "/api/webhooks/level_up")
+     * @param endpoint Event endpoint key (e.g., "/api/webhooks/level_up")
      * @param jsonPayload The JSON string to send in the request body
      * @param eventDescription A human-readable description of the event for logging purposes
      */
@@ -79,10 +71,9 @@ public class ApiClient
     }
 
     /**
-     * Sends a JSON payload to the specified API endpoint with optional screenshot and video.
-     * The request is performed asynchronously to avoid blocking the game client.
+     * Saves a JSON payload locally with optional screenshot and video.
      *
-     * @param endpoint The API endpoint path (e.g., "/api/webhooks/level_up")
+     * @param endpoint Event endpoint key (e.g., "/api/webhooks/level_up")
      * @param jsonPayload The JSON string to send in the request body
      * @param eventDescription A human-readable description of the event for logging purposes
      * @param screenshotBase64 Base64-encoded PNG screenshot (optional, can be null)
@@ -90,113 +81,106 @@ public class ApiClient
      */
     public void sendEventToApi(String endpoint, String jsonPayload, String eventDescription, String screenshotBase64, String videoBase64)
     {
-        String apiUrl = OsrsTrackerConfig.getEffectiveApiUrl();
-        String apiToken = config.apiToken();
-
-        // Validate configuration before attempting to send
-        if (!isConfigurationValid())
+        try
         {
-            log.warn("API URL or token not configured, cannot send {}", eventDescription);
-            return;
+            String eventType = endpointToEventType(endpoint);
+            String timestamp = LocalDateTime.now().format(FILE_TS);
+            Path baseDir = RuneLite.RUNELITE_DIR.toPath().resolve("videos").resolve(eventType);
+            Files.createDirectories(baseDir);
+
+            String baseName = eventType + "_" + timestamp;
+            JsonObject metadata = parsePayload(jsonPayload);
+            metadata.addProperty("event_type", eventType);
+            metadata.addProperty("source_endpoint", endpoint);
+            metadata.addProperty("saved_at", LocalDateTime.now().toString());
+
+            if (screenshotBase64 != null && !screenshotBase64.isEmpty())
+            {
+                byte[] screenshotBytes = screenshotLocalService.decodeBase64Screenshot(screenshotBase64);
+                if (screenshotBytes != null)
+                {
+                    Path screenshotPath = baseDir.resolve(baseName + ".png");
+                    if (screenshotLocalService.saveScreenshot(screenshotBytes, screenshotPath))
+                    {
+                        metadata.addProperty("screenshot_file", screenshotPath.getFileName().toString());
+                    }
+                }
+            }
+
+            if (videoBase64 != null && !videoBase64.isEmpty())
+            {
+                byte[] decodedVideo = tryDecodeBase64(videoBase64);
+                if (decodedVideo != null)
+                {
+                    Path videoPath = baseDir.resolve(baseName + ".mp4");
+                    Files.write(videoPath, decodedVideo);
+                    metadata.addProperty("video_file", videoPath.getFileName().toString());
+                }
+                else
+                {
+                    metadata.addProperty("video_reference", videoBase64);
+                }
+            }
+
+            Path metadataPath = baseDir.resolve(baseName + ".json");
+            Files.write(metadataPath, gson.toJson(metadata).getBytes(StandardCharsets.UTF_8));
+            log.debug("Saved {} locally: {}", eventDescription, metadataPath);
         }
-
-        // Parse the JSON payload and add screenshot/video if provided
-        String finalPayload = jsonPayload;
-        if (screenshotBase64 != null || videoBase64 != null)
+        catch (Exception e)
         {
-            try
-            {
-                // Use injected Gson to parse and modify JSON
-                JsonObject json = gson.fromJson(jsonPayload, JsonObject.class);
-                if (screenshotBase64 != null)
-                {
-                    json.addProperty("screenshot", screenshotBase64);
-                }
-                if (videoBase64 != null)
-                {
-                    json.addProperty("replay_gif", videoBase64);
-                }
-                finalPayload = json.toString();
-            }
-            catch (Exception e)
-            {
-                log.error("Failed to add screenshot/video to payload", e);
-            }
+            log.error("Failed to save {} locally", eventDescription, e);
         }
-
-        // Build the HTTP request
-        RequestBody body = RequestBody.create(JSON, finalPayload);
-        Request request = new Request.Builder()
-            .url(apiUrl + endpoint)
-            .addHeader("Authorization", "Bearer " + apiToken)
-            .addHeader("Content-Type", "application/json")
-            .post(body)
-            .build();
-
-        // Execute request asynchronously to avoid blocking the game thread
-        httpClient.newCall(request).enqueue(new Callback()
-        {
-            @Override
-            public void onFailure(Call call, IOException e)
-            {
-                log.error("Failed to send {} to OSRS Tracker: {}", eventDescription, e.getMessage());
-            }
-
-            @Override
-            public void onResponse(Call call, Response response)
-            {
-                try
-                {
-                    if (response.isSuccessful())
-                    {
-                    }
-                    else if (response.code() == 402)
-                    {
-                        // Payment Required - daily video limit reached
-                        log.warn("Daily video limit reached for {}", eventDescription);
-                        showChatMessage("OSRS Tracker: Daily video limit reached! Upgrade at osrs-tracker.com/upgrade for unlimited videos.");
-                    }
-                    else
-                    {
-                        log.warn("Failed to send {}: {} - {}", eventDescription, response.code(), response.message());
-                    }
-                }
-                finally
-                {
-                    response.close();
-                }
-            }
-        });
     }
 
     /**
-     * Validates that the API configuration is complete and ready to use.
-     * Network requests are disabled by default until the user configures their API token.
-     *
-     * @return true if API token is configured, false otherwise
+     * Always true in local-only mode.
      */
     public boolean isConfigurationValid()
     {
-        if (config.apiToken().isEmpty())
-        {
-            return false;
-        }
-
         return true;
     }
 
-    /**
-     * Shows a chat message in the game client.
-     * Used to notify users of important events like quota limits.
-     */
-    private void showChatMessage(String message)
+    private JsonObject parsePayload(String jsonPayload)
     {
-        if (chatMessageManager != null)
+        try
         {
-            chatMessageManager.queue(QueuedMessage.builder()
-                .type(ChatMessageType.GAMEMESSAGE)
-                .runeLiteFormattedMessage("<col=ff9040>" + message + "</col>")
-                .build());
+            JsonElement element = gson.fromJson(jsonPayload, JsonElement.class);
+            if (element != null && element.isJsonObject())
+            {
+                return element.getAsJsonObject();
+            }
+        }
+        catch (Exception ignored)
+        {
+        }
+
+        JsonObject fallback = new JsonObject();
+        fallback.addProperty("raw_payload", jsonPayload != null ? jsonPayload : "");
+        return fallback;
+    }
+
+    private String endpointToEventType(String endpoint)
+    {
+        if (endpoint == null || endpoint.isEmpty())
+        {
+            return "event";
+        }
+
+        int idx = endpoint.lastIndexOf('/');
+        String value = idx >= 0 ? endpoint.substring(idx + 1) : endpoint;
+        value = value.replaceAll("[^a-zA-Z0-9_\\-]", "_").toLowerCase();
+        return value.isEmpty() ? "event" : value;
+    }
+
+    private byte[] tryDecodeBase64(String raw)
+    {
+        try
+        {
+            return Base64.getDecoder().decode(raw);
+        }
+        catch (IllegalArgumentException e)
+        {
+            return null;
         }
     }
 }

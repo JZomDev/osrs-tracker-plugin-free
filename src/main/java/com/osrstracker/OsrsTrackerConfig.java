@@ -28,24 +28,13 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
-import com.osrstracker.itemsnitch.ItemSnitchVerbosity;
 import com.osrstracker.video.VideoQuality;
 
 @ConfigGroup("osrstracker")
 public interface OsrsTrackerConfig extends Config
 {
-    // Production API URL - used when apiUrl config is empty
-    String PRODUCTION_API_URL = "https://osrs-tracker.com";
-
     // Minimum loot value (100k GP)
     int MINIMUM_LOOT_VALUE = 100000;
-
-    // Environment variable to enable dev mode (shows API URL config)
-    // Set OSRS_TRACKER_DEV=true to enable
-    static boolean isDevMode()
-    {
-        return "true".equalsIgnoreCase(System.getenv("OSRS_TRACKER_DEV"));
-    }
 
     /**
      * Parses a GP value string that supports k (thousands) and m (millions) suffixes.
@@ -87,88 +76,39 @@ public interface OsrsTrackerConfig extends Config
         }
     }
     @ConfigSection(
-        name = "API Settings",
-        description = "Configure your OSRS Tracker API connection",
-        position = 0
-    )
-    String apiSection = "api";
-
-    @ConfigSection(
         name = "Tracking Options",
         description = "Choose what to track",
-        position = 1
+        position = 0
     )
     String trackingSection = "tracking";
 
     @ConfigSection(
         name = "Loot Settings",
         description = "Configure loot tracking options",
-        position = 2
+        position = 1
     )
     String lootSection = "loot";
 
     @ConfigSection(
         name = "Clue Scrolls",
         description = "Configure clue scroll tracking options",
-        position = 3
+        position = 2
     )
     String clueSection = "clue";
 
     @ConfigSection(
-        name = "Item Snitch",
-        description = "Track shared clan items in your bank",
-        position = 4
-    )
-    String itemSnitchSection = "itemsnitch";
-
-    @ConfigSection(
         name = "Video Settings",
-        description = "Configure video recording quality (based on available heap memory)",
-        position = 5
+        description = "Configure local video recording quality",
+        position = 3
     )
     String videoSection = "video";
-
-    // ===== API Settings =====
-
-    /**
-     * Returns the effective API URL to use.
-     * In dev mode (OSRS_TRACKER_DEV=true), checks OSRS_TRACKER_API_URL env var.
-     * Otherwise uses production URL.
-     *
-     * Note: This is static to avoid RuneLite treating it as a config item.
-     */
-    static String getEffectiveApiUrl()
-    {
-        if (isDevMode())
-        {
-            String devUrl = System.getenv("OSRS_TRACKER_API_URL");
-            if (devUrl != null && !devUrl.isEmpty())
-            {
-                return devUrl;
-            }
-        }
-        return PRODUCTION_API_URL;
-    }
-
-    @ConfigItem(
-        keyName = "apiToken",
-        name = "API Token",
-        description = "Your API token from osrs-tracker.com (Settings → API Tokens). Tracking is disabled until configured.",
-        section = apiSection,
-        position = 1,
-        secret = true
-    )
-    default String apiToken()
-    {
-        return "";
-    }
 
     // ===== Tracking Options =====
 
     @ConfigItem(
         keyName = "trackLevelUps",
         name = "Track Level-ups",
-        description = "Automatically send level-ups to your tracker",
+        description = "Automatically save level-ups locally",
         section = trackingSection,
         position = 0
     )
@@ -180,7 +120,7 @@ public interface OsrsTrackerConfig extends Config
     @ConfigItem(
         keyName = "trackQuests",
         name = "Track Quests",
-        description = "Automatically send quest completions to your tracker",
+        description = "Automatically save quest completions locally",
         section = trackingSection,
         position = 1
     )
@@ -192,7 +132,7 @@ public interface OsrsTrackerConfig extends Config
     @ConfigItem(
         keyName = "trackLoot",
         name = "Track Loot Drops",
-        description = "Automatically send loot drops to your tracker",
+        description = "Automatically save loot drops locally",
         section = trackingSection,
         position = 2
     )
@@ -204,7 +144,7 @@ public interface OsrsTrackerConfig extends Config
     @ConfigItem(
         keyName = "trackCollectionLog",
         name = "Track Collection Log",
-        description = "Automatically send collection log updates to your tracker",
+        description = "Automatically save collection log updates locally",
         section = trackingSection,
         position = 3
     )
@@ -216,7 +156,7 @@ public interface OsrsTrackerConfig extends Config
     @ConfigItem(
         keyName = "trackDeaths",
         name = "Track Deaths",
-        description = "Automatically send death events to your tracker",
+        description = "Automatically save death events locally",
         section = trackingSection,
         position = 4
     )
@@ -228,7 +168,7 @@ public interface OsrsTrackerConfig extends Config
     @ConfigItem(
         keyName = "trackPets",
         name = "Track Pet Drops",
-        description = "Automatically send pet drop events to your tracker with extended 20-second video capture",
+        description = "Automatically save pet drop events locally with extended 20-second video capture",
         section = trackingSection,
         position = 5
     )
@@ -242,7 +182,7 @@ public interface OsrsTrackerConfig extends Config
     @ConfigItem(
         keyName = "minimumLootValue",
         name = "Minimum Loot Value",
-        description = "Only send loot drops worth at least this amount. Use k for thousands, m for millions (e.g., 100k, 1.5m). Minimum: 100k",
+        description = "Only save loot drops worth at least this amount. Use k for thousands, m for millions (e.g., 100k, 1.5m). Minimum: 100k",
         section = lootSection,
         position = 0
     )
@@ -268,7 +208,7 @@ public interface OsrsTrackerConfig extends Config
     @ConfigItem(
         keyName = "trackClueScrolls",
         name = "Track Clue Scrolls",
-        description = "Automatically send clue scroll rewards to your tracker",
+        description = "Automatically save clue scroll rewards locally",
         section = clueSection,
         position = 0
     )
@@ -289,74 +229,12 @@ public interface OsrsTrackerConfig extends Config
         return true;
     }
 
-    // ===== Item Snitch Settings =====
-
-    @ConfigItem(
-        keyName = "trackItemSnitch",
-        name = "Enable Item Snitch",
-        description = "Track shared clan items in your bank and alert when closing bank",
-        section = itemSnitchSection,
-        position = 0
-    )
-    default boolean trackItemSnitch()
-    {
-        return true;
-    }
-
-    @ConfigItem(
-        keyName = "itemSnitchWarnings",
-        name = "Show Chat Warnings",
-        description = "Show a chat message when closing your bank with shared items inside",
-        section = itemSnitchSection,
-        position = 1
-    )
-    default boolean itemSnitchWarnings()
-    {
-        return true;
-    }
-
-    @ConfigItem(
-        keyName = "itemSnitchVerbosity",
-        name = "Warning Verbosity",
-        description = "How detailed should the chat warning be?",
-        section = itemSnitchSection,
-        position = 2
-    )
-    default ItemSnitchVerbosity itemSnitchVerbosity()
-    {
-        return ItemSnitchVerbosity.MINIMAL;
-    }
-
-    @ConfigItem(
-        keyName = "itemSnitchReportSightings",
-        name = "Report Sightings",
-        description = "Automatically report shared item sightings to your group for tracking",
-        section = itemSnitchSection,
-        position = 3
-    )
-    default boolean itemSnitchReportSightings()
-    {
-        return true;
-    }
-
-    @ConfigItem(
-        keyName = "itemSnitchHighlight",
-        name = "Highlight Items in Bank",
-        description = "Draw a highlight border around shared items when viewing your bank",
-        section = itemSnitchSection,
-        position = 4
-    )
-    default boolean itemSnitchHighlight()
-    {
-        return true;
-    }
-
     // ===== Video Settings =====
 
     @ConfigItem(
         keyName = "videoQuality",
         name = "Recording Quality",
-        description = "Choose video recording quality. Higher quality means larger uploads.",
+        description = "Choose local video recording quality. Higher quality means larger files.",
         section = videoSection,
         position = 0
     )

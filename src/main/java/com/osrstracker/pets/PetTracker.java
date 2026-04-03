@@ -126,7 +126,7 @@ public class PetTracker
 
             log.debug("Pet identified: {} (NPC ID: {})", petName, petNpcId);
 
-            // Capture extended video and send to API
+            // Capture extended video and save locally
             sendPetDropToApi(petName, petNpcId, toBackpack, isDuplicate);
         });
     }
@@ -241,7 +241,7 @@ public class PetTracker
     }
 
     /**
-     * Send the pet drop event to the API with extended video capture.
+     * Save the pet drop event locally with extended video capture.
      *
      * @param petName The name of the pet
      * @param npcId The NPC ID of the pet
@@ -279,7 +279,7 @@ public class PetTracker
                 videoBase64
             );
 
-            log.debug("Pet drop event sent to API: {}", eventDescription);
+            log.debug("Pet drop event saved locally: {}", eventDescription);
         });
     }
 }

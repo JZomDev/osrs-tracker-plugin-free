@@ -29,7 +29,7 @@ import lombok.RequiredArgsConstructor;
 
 /**
  * Video quality presets for recording.
- * Frames are captured as JPEG and uploaded to the server for processing.
+ * Frames are captured and saved locally with each event.
  */
 @Getter
 @RequiredArgsConstructor

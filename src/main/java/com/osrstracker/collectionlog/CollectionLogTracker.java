@@ -69,7 +69,7 @@ public class CollectionLogTracker
      * Processes a game chat message to check for collection log updates.
      *
      * If the message matches the collection log pattern and tracking is enabled,
-     * extracts the item name and sends it to the API.
+     * extracts the item name and saves it locally.
      *
      * @param chatMessage The chat message text (should already have HTML tags removed)
      * @return true if a collection log item was detected and processed, false otherwise
