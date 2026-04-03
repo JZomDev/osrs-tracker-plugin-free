@@ -68,8 +68,6 @@ public class QuestTracker
     private int previousQuestPoints = 0;
     private String lastCompletedQuestName = null;
 
-    // Delayed sync - wait for quest data to load
-    private int pendingSyncTicks = 0;
     private static final int SYNC_DELAY_TICKS = 5; // Wait ~3 seconds after login
 
     @Inject
@@ -91,80 +89,6 @@ public class QuestTracker
         previousQuestPoints = getCurrentQuestPoints();
         lastCompletedQuestName = null;
         log.debug("Initialized quest tracking with {} quest points", previousQuestPoints);
-
-        // Schedule quest sync after a delay (quest data may not be loaded yet)
-        if (config.trackQuests())
-        {
-            pendingSyncTicks = SYNC_DELAY_TICKS;
-            log.debug("Scheduled quest sync in {} ticks", SYNC_DELAY_TICKS);
-        }
-    }
-
-    /**
-     * Called every game tick to handle delayed quest sync.
-     */
-    public void onGameTick()
-    {
-        if (pendingSyncTicks > 0)
-        {
-            pendingSyncTicks--;
-            if (pendingSyncTicks == 0)
-            {
-                log.debug("Executing delayed quest sync");
-                syncCompletedQuests();
-            }
-        }
-    }
-
-    /**
-     * Syncs all completed quests to the server.
-     * This ensures the server has an accurate record of all quests the player has completed.
-     */
-    private void syncCompletedQuests()
-    {
-        List<String> completedQuests = new ArrayList<>();
-
-        for (Quest quest : Quest.values())
-        {
-            try
-            {
-                QuestState state = quest.getState(client);
-                if (state == QuestState.FINISHED)
-                {
-                    completedQuests.add(quest.getName());
-                }
-            }
-            catch (Exception e)
-            {
-                // Some quests may not be available, skip them
-                log.debug("Could not check quest state for {}: {}", quest.getName(), e.getMessage());
-            }
-        }
-
-        if (completedQuests.isEmpty())
-        {
-            log.debug("No completed quests to sync");
-            return;
-        }
-
-        log.debug("Syncing {} completed quests to server", completedQuests.size());
-
-        // Build JSON payload with quest names array
-        JsonObject payload = new JsonObject();
-        JsonArray questNamesArray = new JsonArray();
-        for (String questName : completedQuests)
-        {
-            questNamesArray.add(questName);
-        }
-        payload.add("quest_names", questNamesArray);
-
-        apiClient.sendEventToApi(
-            "/api/webhooks/sync_quests",
-            payload.toString(),
-            "quest sync (" + completedQuests.size() + " quests)",
-            null,
-            null
-        );
     }
 
     /**

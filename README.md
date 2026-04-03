@@ -1,4 +1,4 @@
-# OSRS Tracker (Local Capture Mode)
+# OSRS Tracker No Paywall (Local Capture Mode)
 
 This RuneLite plugin captures gameplay events and stores videos/screenshots locally.
 
@@ -6,7 +6,7 @@ This RuneLite plugin captures gameplay events and stores videos/screenshots loca
 
 - Captures level-ups, quests, loot drops, collection log entries, deaths, clue rewards, and pet drops.
 - Saves quick captures from the sidebar button.
-- Stores files under `RuneLite.RUNELITE_DIR/videos/<event_type>/`.
+- Stores files under `.runelite/videos/<event_type>/`.
 
 ## File Layout
 

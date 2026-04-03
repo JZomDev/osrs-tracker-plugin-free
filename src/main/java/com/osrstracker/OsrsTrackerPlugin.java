@@ -543,9 +543,6 @@ public class OsrsTrackerPlugin extends Plugin
         // Update video capture rate if quality setting changed
         videoRecorder.updateCaptureRateIfNeeded();
 
-        // Handle delayed quest sync
-        questTracker.onGameTick();
-
     }
 
     /**
