@@ -112,7 +112,7 @@ public class ApiClient
                 byte[] decodedVideo = tryDecodeBase64(videoBase64);
                 if (decodedVideo != null)
                 {
-                    Path videoPath = baseDir.resolve(baseName + ".mp4");
+                    Path videoPath = baseDir.resolve(baseName + ".avi");
                     Files.write(videoPath, decodedVideo);
                     metadata.addProperty("video_file", videoPath.getFileName().toString());
                 }
