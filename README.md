@@ -155,7 +155,7 @@ Enable in OSRS Settings:
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/dennisdevulder/osrs-tracker-plugin/issues)
+- **Issues**: [GitHub Issues](https://github.com/JZomDev/osrs-tracker-plugin-free/issues)
 - **Website**: [osrs-tracker.com](https://osrs-tracker.com)
 
 ## License
