@@ -1054,16 +1054,205 @@ public class VideoRecorder
     }
 
     /**
-     * Serializes captured JPEG frames into one base64 blob for local persistence.
+     * Serializes captured JPEG frames into a base64-encoded MJPEG AVI file.
      */
     private String encodeFramesToBase64(List<byte[]> frames) throws IOException
     {
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        for (byte[] frame : frames)
+        byte[] aviBytes = buildMjpegAvi(frames);
+        return Base64.getEncoder().encodeToString(aviBytes);
+    }
+
+    /**
+     * Wraps JPEG frames in a RIFF AVI container with an MJPEG video stream.
+     * Produces a file playable by VLC, Windows Media Player, etc.
+     */
+    private byte[] buildMjpegAvi(List<byte[]> frames) throws IOException
+    {
+        if (frames.isEmpty())
         {
-            baos.write(frame);
+            return new byte[0];
         }
-        return Base64.getEncoder().encodeToString(baos.toByteArray());
+
+        int[] dims = readJpegDimensions(frames.get(0));
+        int width = dims[0];
+        int height = dims[1];
+        int fps = (currentCaptureFps > 0) ? currentCaptureFps : 30;
+        int frameCount = frames.size();
+
+        int maxFrameSize = 0;
+        for (byte[] f : frames)
+        {
+            maxFrameSize = Math.max(maxFrameSize, f.length);
+        }
+
+        // Build movi data (the actual frame chunks) and record per-frame offsets for idx1.
+        // Offsets are measured from the start of the "movi" FourCC (4 bytes before the first chunk).
+        ByteArrayOutputStream moviData = new ByteArrayOutputStream();
+        int[] frameOffsets = new int[frameCount];
+        int moviCursor = 4; // accounts for "movi" FourCC written just before these chunks
+
+        for (int i = 0; i < frameCount; i++)
+        {
+            byte[] frame = frames.get(i);
+            frameOffsets[i] = moviCursor;
+            writeFourCC(moviData, "00dc");
+            writeInt32LE(moviData, frame.length);
+            moviData.write(frame);
+            if (frame.length % 2 != 0)
+            {
+                moviData.write(0); // pad to even boundary
+            }
+            moviCursor += 8 + frame.length + (frame.length % 2);
+        }
+        byte[] moviBytes = moviData.toByteArray();
+
+        // Size constants (all chunk sizes are the payload only, not including the 8-byte header).
+        // strh: 56 bytes, strf (BITMAPINFOHEADER): 40 bytes, avih: 56 bytes
+        // strl LIST body: "strl"(4) + strh-chunk(64) + strf-chunk(48) = 116
+        // hdrl LIST body: "hdrl"(4) + avih-chunk(64) + strl-LIST(124)  = 192
+        // movi LIST body: "movi"(4) + moviBytes.length
+        // idx1 payload:   16 * frameCount
+        int idx1Size = 16 * frameCount;
+        int riffBodySize = 4                            // "AVI "
+            + 8 + 192                                  // hdrl LIST
+            + 8 + 4 + moviBytes.length                 // movi LIST
+            + 8 + idx1Size;                            // idx1 chunk
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        // RIFF header
+        writeFourCC(out, "RIFF");
+        writeInt32LE(out, riffBodySize);
+        writeFourCC(out, "AVI ");
+
+        // hdrl LIST
+        writeFourCC(out, "LIST");
+        writeInt32LE(out, 192);
+        writeFourCC(out, "hdrl");
+
+        // avih (AVI main header)
+        writeFourCC(out, "avih");
+        writeInt32LE(out, 56);
+        writeInt32LE(out, 1000000 / fps);      // dwMicroSecPerFrame
+        writeInt32LE(out, maxFrameSize * fps); // dwMaxBytesPerSec
+        writeInt32LE(out, 0);                  // dwPaddingGranularity
+        writeInt32LE(out, 0x10);               // dwFlags: AVIF_HASINDEX
+        writeInt32LE(out, frameCount);         // dwTotalFrames
+        writeInt32LE(out, 0);                  // dwInitialFrames
+        writeInt32LE(out, 1);                  // dwStreams
+        writeInt32LE(out, maxFrameSize);       // dwSuggestedBufferSize
+        writeInt32LE(out, width);              // dwWidth
+        writeInt32LE(out, height);             // dwHeight
+        writeInt32LE(out, 0);                  // dwReserved[0..3]
+        writeInt32LE(out, 0);
+        writeInt32LE(out, 0);
+        writeInt32LE(out, 0);
+
+        // strl LIST
+        writeFourCC(out, "LIST");
+        writeInt32LE(out, 116); // "strl"(4) + strh-chunk(64) + strf-chunk(48)
+        writeFourCC(out, "strl");
+
+        // strh (video stream header)
+        writeFourCC(out, "strh");
+        writeInt32LE(out, 56);
+        writeFourCC(out, "vids");        // fccType
+        writeFourCC(out, "MJPG");        // fccHandler
+        writeInt32LE(out, 0);            // dwFlags
+        writeInt16LE(out, 0);            // wPriority
+        writeInt16LE(out, 0);            // wLanguage
+        writeInt32LE(out, 0);            // dwInitialFrames
+        writeInt32LE(out, 1);            // dwScale
+        writeInt32LE(out, fps);          // dwRate
+        writeInt32LE(out, 0);            // dwStart
+        writeInt32LE(out, frameCount);   // dwLength
+        writeInt32LE(out, maxFrameSize); // dwSuggestedBufferSize
+        writeInt32LE(out, 0xFFFFFFFF);   // dwQuality (-1 = default)
+        writeInt32LE(out, 0);            // dwSampleSize
+        writeInt16LE(out, 0);            // rcFrame.left
+        writeInt16LE(out, 0);            // rcFrame.top
+        writeInt16LE(out, width);        // rcFrame.right
+        writeInt16LE(out, height);       // rcFrame.bottom
+
+        // strf (BITMAPINFOHEADER)
+        writeFourCC(out, "strf");
+        writeInt32LE(out, 40);
+        writeInt32LE(out, 40);                 // biSize
+        writeInt32LE(out, width);              // biWidth
+        writeInt32LE(out, height);             // biHeight
+        writeInt16LE(out, 1);                  // biPlanes
+        writeInt16LE(out, 24);                 // biBitCount
+        writeFourCC(out, "MJPG");              // biCompression
+        writeInt32LE(out, width * height * 3); // biSizeImage
+        writeInt32LE(out, 0);                  // biXPelsPerMeter
+        writeInt32LE(out, 0);                  // biYPelsPerMeter
+        writeInt32LE(out, 0);                  // biClrUsed
+        writeInt32LE(out, 0);                  // biClrImportant
+
+        // movi LIST
+        writeFourCC(out, "LIST");
+        writeInt32LE(out, 4 + moviBytes.length);
+        writeFourCC(out, "movi");
+        out.write(moviBytes);
+
+        // idx1 (legacy AVI index — enables seeking in most players)
+        writeFourCC(out, "idx1");
+        writeInt32LE(out, idx1Size);
+        for (int i = 0; i < frameCount; i++)
+        {
+            writeFourCC(out, "00dc");
+            writeInt32LE(out, 0x10);           // AVIIF_KEYFRAME
+            writeInt32LE(out, frameOffsets[i]); // offset from start of movi FourCC
+            writeInt32LE(out, frames.get(i).length);
+        }
+
+        return out.toByteArray();
+    }
+
+    /**
+     * Parses width and height from a JPEG SOF marker.
+     * Returns {1280, 720} as a fallback if parsing fails.
+     */
+    private static int[] readJpegDimensions(byte[] jpeg)
+    {
+        for (int i = 0; i < jpeg.length - 9; i++)
+        {
+            if ((jpeg[i] & 0xFF) == 0xFF)
+            {
+                int marker = jpeg[i + 1] & 0xFF;
+                // SOF0 (0xC0), SOF1 (0xC1), SOF2 (0xC2) all carry frame dimensions
+                if (marker == 0xC0 || marker == 0xC1 || marker == 0xC2)
+                {
+                    int h = ((jpeg[i + 5] & 0xFF) << 8) | (jpeg[i + 6] & 0xFF);
+                    int w = ((jpeg[i + 7] & 0xFF) << 8) | (jpeg[i + 8] & 0xFF);
+                    if (w > 0 && h > 0)
+                    {
+                        return new int[]{w, h};
+                    }
+                }
+            }
+        }
+        return new int[]{1280, 720};
+    }
+
+    private static void writeFourCC(ByteArrayOutputStream out, String fourcc)
+    {
+        byte[] b = fourcc.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        out.write(b, 0, 4);
+    }
+
+    private static void writeInt32LE(ByteArrayOutputStream out, int value)
+    {
+        out.write(value & 0xFF);
+        out.write((value >> 8) & 0xFF);
+        out.write((value >> 16) & 0xFF);
+        out.write((value >> 24) & 0xFF);
+    }
+
+    private static void writeInt16LE(ByteArrayOutputStream out, int value)
+    {
+        out.write(value & 0xFF);
+        out.write((value >> 8) & 0xFF);
     }
 
     /**
