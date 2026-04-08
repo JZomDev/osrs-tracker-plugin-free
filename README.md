@@ -16,7 +16,7 @@ If you want a paywall version of this check out https://github.com/dennisdevulde
 
 For each event, the plugin writes files using:
 
-- `<event_type>_<timestamp>.mp4`
+- `<event_type>_<timestamp>.avi`
 - `<event_type>_<timestamp>.png` (when screenshot is captured)
 - `<event_type>_<timestamp>.json` (event metadata payload)
 
