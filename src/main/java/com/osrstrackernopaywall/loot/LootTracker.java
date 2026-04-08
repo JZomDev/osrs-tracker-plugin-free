@@ -30,6 +30,7 @@ import com.osrstrackernopaywall.OsrsTrackerConfig;
 import com.osrstrackernopaywall.api.ApiClient;
 import com.osrstrackernopaywall.video.VideoRecorder;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
 import net.runelite.api.ItemComposition;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
@@ -48,14 +49,16 @@ import java.util.Collection;
 @Singleton
 public class LootTracker
 {
+    private final Client client;
     private final ItemManager itemManager;
     private final ApiClient apiClient;
     private final OsrsTrackerConfig config;
     private final VideoRecorder videoRecorder;
 
     @Inject
-    public LootTracker(ItemManager itemManager, ApiClient apiClient, OsrsTrackerConfig config, VideoRecorder videoRecorder)
+    public LootTracker(Client client, ItemManager itemManager, ApiClient apiClient, OsrsTrackerConfig config, VideoRecorder videoRecorder)
     {
+        this.client = client;
         this.itemManager = itemManager;
         this.apiClient = apiClient;
         this.config = config;
@@ -160,6 +163,13 @@ public class LootTracker
             payload.addProperty("source", sourceName);
             payload.add("items", lootData.items);
             payload.addProperty("total_value", lootData.totalValue);
+
+            String playerName = "unknown";
+            if (client.getLocalPlayer() != null && client.getLocalPlayer().getName() != null)
+            {
+                playerName = client.getLocalPlayer().getName();
+            }
+            payload.addProperty("playername", playerName);
 
             apiClient.sendEventToApi(
                 "/api/webhooks/loot_drop",

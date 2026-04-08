@@ -85,8 +85,6 @@ public class ApiClient
         {
             String eventType = endpointToEventType(endpoint);
             String timestamp = LocalDateTime.now().format(FILE_TS);
-            Path baseDir = RuneLite.RUNELITE_DIR.toPath().resolve("videos").resolve(eventType);
-            Files.createDirectories(baseDir);
 
             String baseName = eventType + "_" + timestamp;
             JsonObject metadata = parsePayload(jsonPayload);
@@ -94,7 +92,10 @@ public class ApiClient
             metadata.addProperty("source_endpoint", endpoint);
             metadata.addProperty("saved_at", LocalDateTime.now().toString());
 
-            if (screenshotBase64 != null && !screenshotBase64.isEmpty())
+			Path baseDir = RuneLite.RUNELITE_DIR.toPath().resolve("videos").resolve(metadata.get("playername").getAsString()).resolve(eventType);
+			Files.createDirectories(baseDir);
+
+			if (screenshotBase64 != null && !screenshotBase64.isEmpty())
             {
                 byte[] screenshotBytes = screenshotLocalService.decodeBase64Screenshot(screenshotBase64);
                 if (screenshotBytes != null)

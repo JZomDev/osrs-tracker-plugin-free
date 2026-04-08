@@ -79,6 +79,14 @@ public class DeathTracker
         videoRecorder.captureEventVideo(
             (screenshotBase64, videoBase64) -> {
                 JsonObject payload = new JsonObject();
+
+				String playerName = "unknown";
+				if (client.getLocalPlayer() != null && client.getLocalPlayer().getName() != null)
+				{
+					playerName = client.getLocalPlayer().getName();
+				}
+
+				payload.addProperty("playername", playerName);
                 payload.addProperty("timestamp", Instant.now().toString());
 
                 apiClient.sendEventToApi(

@@ -184,6 +184,13 @@ public class QuestTracker
             JsonObject payload = new JsonObject();
             payload.addProperty("quest_name", questName);
 
+            String playerName = "unknown";
+            if (client.getLocalPlayer() != null && client.getLocalPlayer().getName() != null)
+            {
+                playerName = client.getLocalPlayer().getName();
+            }
+            payload.addProperty("playername", playerName);
+
             apiClient.sendEventToApi(
                 "/api/webhooks/quest_complete",
                 payload.toString(),

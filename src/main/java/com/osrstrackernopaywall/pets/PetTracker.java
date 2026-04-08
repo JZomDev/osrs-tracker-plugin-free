@@ -260,10 +260,12 @@ public class PetTracker
 
         // Add player name if available
         Player localPlayer = client.getLocalPlayer();
+        String playerName = "unknown";
         if (localPlayer != null && localPlayer.getName() != null)
         {
-            payload.addProperty("player_name", localPlayer.getName());
+            playerName = localPlayer.getName();
         }
+        payload.addProperty("playername", playerName);
 
         // Capture video with standard duration (6s buffer + 4s post)
         videoRecorder.captureEventVideo((screenshotBase64, videoBase64) -> {

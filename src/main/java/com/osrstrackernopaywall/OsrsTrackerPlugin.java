@@ -26,6 +26,7 @@ package com.osrstrackernopaywall;
 
 import com.google.gson.JsonObject;
 import com.google.inject.Provides;
+import com.osrstrackernopaywall.playerdeath.OtherPlayerDeathTracker;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 import net.runelite.api.events.*;
@@ -119,6 +120,9 @@ public class OsrsTrackerPlugin extends Plugin
 
     @Inject
     private DeathTracker deathTracker;
+
+	@Inject
+	private OtherPlayerDeathTracker otherPlayerDeathTracker;
 
     @Inject
     private ClueScrollTracker clueScrollTracker;
@@ -287,6 +291,13 @@ public class OsrsTrackerPlugin extends Plugin
 
                 JsonObject json = new JsonObject();
                 json.addProperty("event_type", "quick_capture");
+
+				String playerName = "unknown";
+				if (client.getLocalPlayer() != null && client.getLocalPlayer().getName() != null)
+				{
+					playerName = client.getLocalPlayer().getName();
+				}
+				json.addProperty("playername", playerName);
 
                 // Get player RSN if available
                 Player localPlayer = client.getLocalPlayer();
@@ -515,11 +526,22 @@ public class OsrsTrackerPlugin extends Plugin
     {
         Actor actor = actorDeath.getActor();
 
+		if (!(actor instanceof Player))
+		{
+			return;
+		}
+
         // Track player deaths for timeline
         if (config.trackDeaths())
         {
             deathTracker.processActorDeath(actor);
         }
+
+		// Track other player deaths for timeline
+		if (config.trackOtherDeaths())
+		{
+			otherPlayerDeathTracker.processActorDeath(actor);
+		}
 
     }
 

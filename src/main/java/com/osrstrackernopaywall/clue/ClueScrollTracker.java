@@ -235,6 +235,13 @@ public class ClueScrollTracker
         payload.add("items", items);
         payload.addProperty("total_value", totalValue);
 
+        String playerName = "unknown";
+        if (client.getLocalPlayer() != null && client.getLocalPlayer().getName() != null)
+        {
+            playerName = client.getLocalPlayer().getName();
+        }
+        payload.addProperty("playername", playerName);
+
         // Capture screenshot only (no video for clue scrolls - the reward screen is static)
         if (config.clueScreenshot())
         {

@@ -29,6 +29,7 @@ import com.osrstrackernopaywall.OsrsTrackerConfig;
 import com.osrstrackernopaywall.api.ApiClient;
 import com.osrstrackernopaywall.video.VideoRecorder;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -53,13 +54,15 @@ public class CollectionLogTracker
         "New item added to your collection log: (.*)"
     );
 
+    private final Client client;
     private final ApiClient apiClient;
     private final OsrsTrackerConfig config;
     private final VideoRecorder videoRecorder;
 
     @Inject
-    public CollectionLogTracker(ApiClient apiClient, OsrsTrackerConfig config, VideoRecorder videoRecorder)
+    public CollectionLogTracker(Client client, ApiClient apiClient, OsrsTrackerConfig config, VideoRecorder videoRecorder)
     {
+        this.client = client;
         this.apiClient = apiClient;
         this.config = config;
         this.videoRecorder = videoRecorder;
@@ -111,6 +114,13 @@ public class CollectionLogTracker
             JsonObject payload = new JsonObject();
             payload.addProperty("item_name", itemName);
             payload.addProperty("obtained_at", Instant.now().toString());
+
+            String playerName = "unknown";
+            if (client.getLocalPlayer() != null && client.getLocalPlayer().getName() != null)
+            {
+                playerName = client.getLocalPlayer().getName();
+            }
+            payload.addProperty("playername", playerName);
 
             apiClient.sendEventToApi(
                 "/api/webhooks/collection_log",

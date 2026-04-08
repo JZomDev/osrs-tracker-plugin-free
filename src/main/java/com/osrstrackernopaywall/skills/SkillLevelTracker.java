@@ -270,6 +270,13 @@ public class SkillLevelTracker
             payload.addProperty("old_level", oldLevel);
             payload.addProperty("new_level", newLevel);
 
+            String playerName = "unknown";
+            if (client.getLocalPlayer() != null && client.getLocalPlayer().getName() != null)
+            {
+                playerName = client.getLocalPlayer().getName();
+            }
+            payload.addProperty("playername", playerName);
+
             apiClient.sendEventToApi(
                 "/api/webhooks/level_up",
                 payload.toString(),

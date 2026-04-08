@@ -39,7 +39,7 @@ import java.time.Instant;
 
 @Slf4j
 @Singleton
-public class DeathTracker
+public class OtherPlayerDeathTracker
 {
 	private final Client client;
 	private final ApiClient apiClient;
@@ -49,7 +49,7 @@ public class DeathTracker
 	private static final int DEATH_POST_EVENT_MS = 5000;
 
 	@Inject
-	public DeathTracker(Client client, ApiClient apiClient, OsrsTrackerConfig config, VideoRecorder videoRecorder)
+	public OtherPlayerDeathTracker(Client client, ApiClient apiClient, OsrsTrackerConfig config, VideoRecorder videoRecorder)
 	{
 		this.client = client;
 		this.apiClient = apiClient;
@@ -59,7 +59,7 @@ public class DeathTracker
 
 	public void processActorDeath(Actor actor)
 	{
-		if (!config.trackDeaths())
+		if (!config.trackOtherDeaths())
 		{
 			return;
 		}
@@ -83,6 +83,13 @@ public class DeathTracker
 			(screenshotBase64, videoBase64) -> {
 				JsonObject payload = new JsonObject();
 				payload.addProperty("timestamp", Instant.now().toString());
+
+				String playerName = "unknown";
+				if (client.getLocalPlayer() != null && client.getLocalPlayer().getName() != null)
+				{
+					playerName = client.getLocalPlayer().getName();
+				}
+				payload.addProperty("playername", playerName);
 
 				apiClient.sendEventToApi(
 					"/api/webhooks/death",
