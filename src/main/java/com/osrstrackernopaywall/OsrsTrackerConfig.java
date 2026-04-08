@@ -155,7 +155,7 @@ public interface OsrsTrackerConfig extends Config
 
     @ConfigItem(
         keyName = "trackDeaths",
-        name = "Track Deaths",
+        name = "Track Own Deaths",
         description = "Automatically save death events locally",
         section = trackingSection,
         position = 4
@@ -165,12 +165,24 @@ public interface OsrsTrackerConfig extends Config
         return true;
     }
 
+	@ConfigItem(
+		keyName = "trackOtherDeaths",
+		name = "Track Other Deaths",
+		description = "Automatically save death events locally",
+		section = trackingSection,
+		position = 5
+	)
+	default boolean trackOtherDeaths()
+	{
+		return true;
+	}
+
     @ConfigItem(
         keyName = "trackPets",
         name = "Track Pet Drops",
         description = "Automatically save pet drop events locally with extended 20-second video capture",
         section = trackingSection,
-        position = 5
+        position = 6
     )
     default boolean trackPets()
     {
