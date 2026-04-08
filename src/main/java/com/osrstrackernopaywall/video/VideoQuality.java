@@ -66,6 +66,17 @@ public enum VideoQuality
 		10000, // 10 seconds
 		30,    // 30 FPS
 		0.80f  // 80% JPEG quality
+	),
+
+	/**
+	 * Quality video - smooth playback at full frame rate.
+	 * 10 seconds @ 60 FPS, 90% JPEG quality, 1080p
+	 */
+	BEST(
+		"Video: Best (60 FPS)",
+			10000, // 10 seconds
+			60,    // 30 FPS
+			0.90f  // 80% JPEG quality
 	);
 
 	private final String displayName;

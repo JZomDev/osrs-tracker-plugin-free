@@ -63,7 +63,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * - No disk I/O for normal recording - only memory operations
  *
  * Memory Layout:
- * - MAX_FRAMES = 300 frames (10 seconds at 30 FPS)
+ * - MAX_FRAMES = 600 frames (10 seconds at 60 FPS)
  * - Average JPEG size ~50KB = ~15MB total buffer
  * - Only JPEG bytes stored, raw frames discarded immediately
  */
@@ -80,7 +80,7 @@ public class VideoRecorder
     private final ExecutorService apiExecutor;
 
     // Circular buffer configuration
-    private static final int MAX_FRAMES = 300; // 10 seconds at 30 FPS
+    private static final int MAX_FRAMES = 600; // 10 seconds at 30 FPS
 
     // Circular buffer storage
     private final byte[][] jpegBuffer = new byte[MAX_FRAMES][];
@@ -656,6 +656,7 @@ public class VideoRecorder
         // Video capture mode
         int durationMs = quality.getDurationMs();
         int bufferMs = durationMs - postEventMs;
+        int clipFps = quality.getFps() > 0 ? quality.getFps() : (currentCaptureFps > 0 ? currentCaptureFps : 30);
 
         // Ensure buffer is at least 1 second
         if (bufferMs < 1000)
@@ -670,6 +671,7 @@ public class VideoRecorder
         final long videoStartTime = captureStartTime - bufferMs;
         final long videoEndTime = captureStartTime + postEventMs;
         final int finalPostEventMs = postEventMs;
+        final ClipSettings clipSettings = new ClipSettings(durationMs, clipFps);
 
         // Schedule task to finalize capture after post-event duration
         scheduler.schedule(() -> {
@@ -679,7 +681,7 @@ public class VideoRecorder
             {
                 onEncodingStart.run();
             }
-            finalizeCapture(callback, videoStartTime, videoEndTime);
+            finalizeCapture(callback, videoStartTime, videoEndTime, clipSettings);
         }, finalPostEventMs, TimeUnit.MILLISECONDS);
     }
 
@@ -901,7 +903,7 @@ public class VideoRecorder
      * @param videoStartTime The start timestamp for the video (frames before this are excluded)
      * @param videoEndTime The end timestamp for the video (frames after this are excluded)
      */
-    private void finalizeCapture(VideoCallback callback, long videoStartTime, long videoEndTime)
+    private void finalizeCapture(VideoCallback callback, long videoStartTime, long videoEndTime, ClipSettings clipSettings)
     {
         // Check for sensitive content before capturing final screenshot
         final boolean shouldBlur = isSensitiveContentVisible();
@@ -930,10 +932,25 @@ public class VideoRecorder
                         return;
                     }
 
+                    List<byte[]> normalizedFrames = normalizeFrames(frameSnapshot, clipSettings);
+                    if (normalizedFrames.isEmpty())
+                    {
+                        callback.onComplete(screenshotBase64, null);
+                        return;
+                    }
+
+                    log.debug(
+                        "Clip timing: sourceFrames={}, exportedFrames={}, durationMs={}, targetFps={}",
+                        frameSnapshot.frames.size(),
+                        normalizedFrames.size(),
+                        clipSettings.durationMs,
+                        clipSettings.fps
+                    );
+
                     apiExecutor.submit(() -> {
                         try
                         {
-                            String videoBase64 = encodeFramesToBase64(frameSnapshot.frames);
+                            String videoBase64 = encodeFramesToBase64(normalizedFrames, clipSettings.fps);
                             callback.onComplete(screenshotBase64, videoBase64);
                         }
                         catch (Exception e)
@@ -958,6 +975,22 @@ public class VideoRecorder
     private static class FrameSnapshot
     {
         List<byte[]> frames;
+        List<Long> timestamps;
+    }
+
+    // Clip duration/FPS are locked per capture to keep exported timing deterministic.
+    private static class ClipSettings
+    {
+        final int durationMs;
+        final int fps;
+        final int targetFrameCount;
+
+        ClipSettings(int durationMs, int fps)
+        {
+            this.durationMs = durationMs;
+            this.fps = Math.max(1, fps);
+            this.targetFrameCount = Math.max(1, (int) Math.round((this.durationMs / 1000.0) * this.fps));
+        }
     }
 
     /**
@@ -990,7 +1023,7 @@ public class VideoRecorder
                 if (timestamp >= videoStartTime && timestamp <= videoEndTime && frame != null)
                 {
                     // Copy frame data for processing outside lock
-                    framesToProcess.add(new FrameData(frame, needsBlur));
+                    framesToProcess.add(new FrameData(frame, needsBlur, timestamp));
                 }
             }
         }
@@ -998,7 +1031,7 @@ public class VideoRecorder
         // Process frames outside the lock (apply blur if needed)
         // This prevents holding the bufferLock during expensive ImageIO operations
         List<byte[]> clipFrames = new ArrayList<>();
-        int blurAppliedCount = 0;
+        List<Long> clipTimestamps = new ArrayList<>();
 
         for (FrameData frameData : framesToProcess)
         {
@@ -1016,7 +1049,6 @@ public class VideoRecorder
                         java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
                         ImageIO.write(blurred, "jpg", baos);
                         frame = baos.toByteArray();
-                        blurAppliedCount++;
                     }
                 }
                 catch (IOException e)
@@ -1026,6 +1058,7 @@ public class VideoRecorder
                 }
             }
             clipFrames.add(frame);
+            clipTimestamps.add(frameData.timestamp);
         }
 
         if (clipFrames.isEmpty())
@@ -1035,7 +1068,59 @@ public class VideoRecorder
 
         FrameSnapshot snapshot = new FrameSnapshot();
         snapshot.frames = clipFrames;
+        snapshot.timestamps = clipTimestamps;
         return snapshot;
+    }
+
+    /**
+     * Resamples the captured window to exactly the clip's target frame count.
+     * Duplicates nearby source frames when capture is sparse.
+     */
+    private List<byte[]> normalizeFrames(FrameSnapshot snapshot, ClipSettings clipSettings)
+    {
+        if (snapshot == null || snapshot.frames == null || snapshot.frames.isEmpty())
+        {
+            return java.util.Collections.emptyList();
+        }
+
+        int sourceCount = snapshot.frames.size();
+        int targetCount = clipSettings.targetFrameCount;
+
+        if (sourceCount == 1)
+        {
+            List<byte[]> repeated = new ArrayList<>(targetCount);
+            byte[] single = snapshot.frames.get(0);
+            for (int i = 0; i < targetCount; i++)
+            {
+                repeated.add(single);
+            }
+            return repeated;
+        }
+
+        List<byte[]> normalized = new ArrayList<>(targetCount);
+        long startTs = snapshot.timestamps.get(0);
+        int sourceIdx = 0;
+
+        for (int i = 0; i < targetCount; i++)
+        {
+            long targetTs = startTs + ((long) i * clipSettings.durationMs) / targetCount;
+
+            while (sourceIdx + 1 < sourceCount)
+            {
+                long currDiff = Math.abs(snapshot.timestamps.get(sourceIdx) - targetTs);
+                long nextDiff = Math.abs(snapshot.timestamps.get(sourceIdx + 1) - targetTs);
+                if (nextDiff <= currDiff)
+                {
+                    sourceIdx++;
+                    continue;
+                }
+                break;
+            }
+
+            normalized.add(snapshot.frames.get(sourceIdx));
+        }
+
+        return normalized;
     }
 
     /**
@@ -1045,20 +1130,22 @@ public class VideoRecorder
     {
         final byte[] frame;
         final boolean needsBlur;
+        final long timestamp;
 
-        FrameData(byte[] frame, boolean needsBlur)
+        FrameData(byte[] frame, boolean needsBlur, long timestamp)
         {
             this.frame = frame;
             this.needsBlur = needsBlur;
+            this.timestamp = timestamp;
         }
     }
 
     /**
      * Serializes captured JPEG frames into a base64-encoded MJPEG AVI file.
      */
-    private String encodeFramesToBase64(List<byte[]> frames) throws IOException
+    private String encodeFramesToBase64(List<byte[]> frames, int fps) throws IOException
     {
-        byte[] aviBytes = buildMjpegAvi(frames);
+        byte[] aviBytes = buildMjpegAvi(frames, fps);
         return Base64.getEncoder().encodeToString(aviBytes);
     }
 
@@ -1066,7 +1153,7 @@ public class VideoRecorder
      * Wraps JPEG frames in a RIFF AVI container with an MJPEG video stream.
      * Produces a file playable by VLC, Windows Media Player, etc.
      */
-    private byte[] buildMjpegAvi(List<byte[]> frames) throws IOException
+    private byte[] buildMjpegAvi(List<byte[]> frames, int fps) throws IOException
     {
         if (frames.isEmpty())
         {
@@ -1076,7 +1163,7 @@ public class VideoRecorder
         int[] dims = readJpegDimensions(frames.get(0));
         int width = dims[0];
         int height = dims[1];
-        int fps = (currentCaptureFps > 0) ? currentCaptureFps : 30;
+        int safeFps = Math.max(1, fps);
         int frameCount = frames.size();
 
         int maxFrameSize = 0;
@@ -1133,8 +1220,8 @@ public class VideoRecorder
         // avih (AVI main header)
         writeFourCC(out, "avih");
         writeInt32LE(out, 56);
-        writeInt32LE(out, 1000000 / fps);      // dwMicroSecPerFrame
-        writeInt32LE(out, maxFrameSize * fps); // dwMaxBytesPerSec
+        writeInt32LE(out, 1000000 / safeFps);      // dwMicroSecPerFrame
+        writeInt32LE(out, maxFrameSize * safeFps); // dwMaxBytesPerSec
         writeInt32LE(out, 0);                  // dwPaddingGranularity
         writeInt32LE(out, 0x10);               // dwFlags: AVIF_HASINDEX
         writeInt32LE(out, frameCount);         // dwTotalFrames
@@ -1163,7 +1250,7 @@ public class VideoRecorder
         writeInt16LE(out, 0);            // wLanguage
         writeInt32LE(out, 0);            // dwInitialFrames
         writeInt32LE(out, 1);            // dwScale
-        writeInt32LE(out, fps);          // dwRate
+        writeInt32LE(out, safeFps);      // dwRate
         writeInt32LE(out, 0);            // dwStart
         writeInt32LE(out, frameCount);   // dwLength
         writeInt32LE(out, maxFrameSize); // dwSuggestedBufferSize

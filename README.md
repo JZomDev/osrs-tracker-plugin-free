@@ -6,6 +6,8 @@ It's free. No API token required. No online sync. No paywall.
 
 If you want a paywall version of this check out https://github.com/dennisdevulder/osrs-tracker-plugin
 
+The recording looks smoother if you have a stronger computer. 
+
 ## What It Does
 
 - Captures level-ups, quests, loot drops, collection log entries, deaths, clue rewards, and pet drops.
