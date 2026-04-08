@@ -35,6 +35,8 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.EventBus;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ServerNpcLoot;
+import net.runelite.client.plugins.PluginDependency;
+import net.runelite.client.plugins.gpu.GpuPlugin;
 import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.http.api.loottracker.LootRecordType;
 import net.runelite.client.plugins.Plugin;
@@ -83,6 +85,7 @@ import java.util.concurrent.atomic.AtomicLong;
     description = "Automatically captures level-ups, quest completions, loot drops, clue scrolls, and deaths to local files",
     tags = {"tracker", "levels", "quests", "loot", "collection log", "deaths", "clue", "treasure trails"}
 )
+@PluginDependency(GpuPlugin.class)
 public class OsrsTrackerPlugin extends Plugin
 {
     // Gauntlet boss NPC IDs (multiple forms/states for each)
